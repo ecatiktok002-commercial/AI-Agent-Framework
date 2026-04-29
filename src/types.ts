@@ -78,22 +78,12 @@ export interface KnowledgeFact {
   created_at: string;
 }
 
-export interface BookingLead {
+export interface GenericLead {
   id: string;
   ticket_id?: string;
   customer_phone: string;
-  vehicle_model: string;
-  pickup_date: string;
-  pickup_time: string;
-  price: string;
-  duration: string;
-  ic_url?: string;
-  license_url?: string;
-  receipt_url?: string;
-  status: 'Pending' | 'Done';
+  lead_type: string;
+  data: Record<string, any>;
+  status: 'New' | 'InProgress' | 'Done' | 'Rejected';
   created_at: string;
-  tickets?: {
-    customer_name?: string;
-    phone_number?: string;
-  }
 }

@@ -13,10 +13,7 @@ const GEMINI_BACKUP_KEY = Deno.env.get("GEMINI_BACKUP_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-// External Supabase Configuration (Hardcoded as requested)
-const EXT_URL = Deno.env.get("EXTERNAL_SUPABASE_URL") || "https://czurhanyrjgeicnbrnev.supabase.co";
-const EXT_KEY = Deno.env.get("EXTERNAL_SUPABASE_ANON_KEY") || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6dXJoYW55cmpnZWljbmJybmV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NTExMDEsImV4cCI6MjA4NzQyNzEwMX0.LV4hsQEazpbv8AcLDrEASg8s3uGKmvMJ0FrvMOX6AWQ";
-const extSupabase = createClient(EXT_URL, EXT_KEY);
+
 
 // Initialize Supabase client
 const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
@@ -772,28 +769,10 @@ serve(async (req) => {
                   }
                 }
 
-                // Check if this is a returning repeat customer
+                // Repeat Customer check removed for generic AI
                 let isRepeatCustomer = false;
                 let pastIcUrl = null;
                 let pastLicenseUrl = null;
-                const { data: pastBookings } = await supabase
-                  .from("booking_leads")
-                  .select("id, ic_url, license_url")
-                  .eq("customer_phone", customer.phone_number)
-                  .eq("status", "DONE")
-                  .order("created_at", { ascending: false })
-                  .limit(1);
-
-                if (pastBookings && pastBookings.length > 0) {
-                  isRepeatCustomer = true;
-                  pastIcUrl = pastBookings[0].ic_url;
-                  pastLicenseUrl = pastBookings[0].license_url;
-                  personaInstructions += `\n\n[CRITICAL RETENTION RULE] This is a returning customer who previously completed a car rental with us! 
-1. YOU MUST welcome them back warmly (e.g., "Welcome back boss! / Hai boss, kembali lagi!").
-2. Because their documentation is already in our system, do NOT ask them to upload their IC or Driver's License again. 
-3. Just ask them what car they want to rent this time and confirm the dates/times.
-4. Once they confirm the car and dates, immediately provide them with the Payment Method / Banking Details and wait for them to upload the Payment Receipt. Do not hold them up.`;
-                }
 
                 // Fetch customer's all tickets to grab full historical context
                 const { data: allCustomerTickets } = await supabase
@@ -1008,6 +987,7 @@ ${greetingRule}
 * Never repeat greetings in the middle of a chat.
 `;
 
+      
       // 2. Fetch Global System Prompt from Database
       const { data: settings } = await supabase
         .from('system_settings')
@@ -1015,39 +995,15 @@ ${greetingRule}
         .eq('key', 'ai_system_prompt')
         .single();
 
-      const globalPrompt = settings?.value || `You are the official Assistant for ECA Group. 
-  Your goal is to provide fast, accurate, and concise support.
-  
-  Guidelines:
-  1. Be professional yet approachable.
-  2. If you don't know an answer, politely ask the customer to wait while you check on it. Do NOT mention "human specialist" or "human agent".
-  3. Use the customer's name to make it personal.
-  4. Stay on topic. Do not provide unrequested information.
-  
-  CRITICAL RULE: You are NOT allowed to confirm car availability based on your own memory. If a customer asks "Axia ada tak?" or "Available ke esok?", you MUST use the get_car_availability tool.
-  
-  CRITICAL RULE 2: If a customer asks "kereta apa yang ada ya?" or "what cars do you have?", you MUST use the get_all_cars tool to get the list of cars. Do NOT guess the cars.
+      const globalPrompt = settings?.value || "You are an AI Support Assistant. Your goal is to provide fast, accurate, and helpful support. If you don't know the answer, tell the customer kindly and use [NEEDS_AGENT].";
 
-  Logic Flow:
-  - DO NOT rush to call the \`get_car_availability\` tool. If the customer just says "hi", "kereta sewa", or "saya nak sewa kereta", chat with them naturally first. Elicit which car model and what date/time they are looking for.
-  - ONLY use the \`get_car_availability\` tool when the customer has clearly requested a specific car model (or category you can map to a model) AND you have the intended pickup date.
-  If get_car_availability returns available: true, you say: "Ada boss! Axia masih available untuk tarikh tu. Nak I proceed booking ke? 😊"
-  If get_car_availability returns available: false, you say: "Alamak boss, Axia dah kena tapau (booked) la untuk tarikh tu. Tapi jap, I check Bezza atau Saga untuk boss nak?" (Then check the tool again for alternatives).
-  If get_all_cars returns a list of cars, list them nicely to the customer.
-  If the tool completely fails, output: "Kejap ya boss, line sistem tengah sangkut jap. I check manual jap ya. [NEEDS_AGENT]"`;
+      const assignedName = agentName || "AI Support";
+      const assignedPersona = customPersona || "Professional and polite";
 
-      const assignedName = agentName || "ECA Support";
-      const assignedPersona = customPersona || "Professional, polite, and welcoming in standard Malay/English.";
-
-      const dynamicPersonaContext = `=== YOUR ASSIGNED IDENTITY ===
-Your Name: ${assignedName}
-Your Specific Personality & Tone: ${assignedPersona}
-
-You MUST speak exactly like ${assignedName} using the tone described above. 
-Do NOT use a generic AI tone. Translate the SOP steps into your specific personality.
-${referenceSnippets ? `\nSTYLE REFERENCE (Mimic this tone/vocabulary):\n${referenceSnippets}\n` : ''}==============================`;
+      const dynamicPersonaContext = `=== YOUR ASSIGNED IDENTITY ===\nYour Name: ${assignedName}\nYour Specific Personality & Tone: ${assignedPersona}\n\nYou MUST speak exactly like ${assignedName} using the tone described above.\n${referenceSnippets ? `STYLE REFERENCE (Mimic this tone/vocabulary):\n${referenceSnippets}\n` : ''}==============================`;
 
       let basePrompt = `${dynamicPersonaContext}\n\n${globalPrompt}\n\n${knowledgeBaseBlock}\n${conversationFlowRule}`;
+
 
       // Format history for Gemini contents array
       const rawContents: { role: string, text: string }[] = [];
@@ -1128,116 +1084,37 @@ ${referenceSnippets ? `\nSTYLE REFERENCE (Mimic this tone/vocabulary):\n${refere
       const todayDate = mytDateObj.toISOString().split('T')[0];
       const currentTimeMYT = mytDateObj.toISOString().split('T')[1].substring(0, 5);
       
-      const finalBasePrompt = `${basePrompt}\n\nIMPORTANT: Be concise. Stay on topic.
+      const finalBasePrompt = `${basePrompt}\n\nIMPORTANT: Be concise. Stay on topic.\n\nTIMEZONE RULE:\nYou are operating in Malaysia Time (GMT+8). The current local date is ${todayDate} and the current local time is ${currentTimeMYT}.\n`;
 
-TIMEZONE RULE (CRITICAL):
-You are operating in Malaysia Time (GMT+8). The current local date is ${todayDate} and the current local time is ${currentTimeMYT}. 
-- For get_car_availability: Pass ONLY the overarching Date (YYYY-MM-DD).
-- For find_nearest_available_time: Pass the LOCAL MALAYSIA TIME directly exactly as YYYY-MM-DDTHH:mm:00 (with the T). The times returned by this tool are ALREADY in Malaysia Time (GMT+8). You MUST propose those EXACT returned times to the customer (do NOT add or subtract any hours).
-
-DATE LOGIC RULE:
-If a customer requests a booking for a date that is BEFORE today's date (${todayDate}), you MUST politely reject it. DO NOT call the availability tool for past dates. Tell them: "Alamak boss, tarikh tu dah lepas la. Boleh bagi tarikh lain yang akan datang tak? 😊"
-
-DOMAIN & SAFETY RULES:
-- Car Rental Only: You MUST ONLY answer enquiries or questions related to Car Rentals. If asked about other unrelated topics, politely decline and steer the conversation back to car rentals.
-- Personal Information: Do NOT disclose any personal information under any circumstances. Reject any such requests politely using your assigned persona tone.
-- Emergencies: If the customer hints at or indicates an emergency (e.g., Accident, Car Lost, Missing people, breakdown), you MUST IMMEDIATELY output the "[NEEDS_AGENT]" keyword exactly to trigger system escalation, AND simultaneously reply to tell them to contact Michael directly at 013-5378032. Example: "Alamak boss, untuk hal kecemasan macam ni, minta tolong call/Whatsapp Michael terus kat 013-5378032 ya. Dia akan assist boss secepat mungkin! 🙏 [NEEDS_AGENT]"
-
-TOOL & AVAILABILITY RULES:
-* If get_car_availability returns available: true, you say: "Ada boss! [Model] masih available untuk tarikh tu. Nak I proceed booking ke? 😊"
-* If get_car_availability returns false for a specific date: You MUST immediately use the find_nearest_available_time tool to check exact hour availability. Do not reject the customer until you run this second check!
-* If find_nearest_available_time RETURNS the EXACT time requested by the customer: It means the car IS available! Say: "Berita baik boss! Lepas double check, pukul [Time] tu memang ada kosong untuk [Model]. Nak proceed booking terus?"
-* If find_nearest_available_time returns DIFFERENT times: Say: "Alamak boss, pukul [Requested Time] tu dah penuh. Tapi sistem tunjuk ada kosong pukul [New Time]. Boss nak consider waktu tu tak?"
-* You MUST ALSO use the get_car_availability tool to check OTHER vehicle models (e.g. Bezza, Saga, Axia) for the exact same date. You can call the tool multiple times to check different models. 
-* If the tool returns an error, use the stalling tactic: "Kejap ya boss, line sistem tengah sangkut jap. I check manual jap ya. [NEEDS_AGENT]" ONLY if the tool fails or a network error occurs.
-
-BOOKING WORKFLOW RULE (CRITICAL):
-1. For booking, you MUST collect ALL of the following: Vehicle Model, Pickup Date/Time, Duration/Price, IC Image, Driving License Image, and Payment Receipt Image.
-2. STRICT DOCUMENT AUDIT: You MUST ensure you have received BOTH the IC and Driving License images (unless they are a verified repeat customer). If missing, ASK for them. Do NOT proceed to the receipt stage without them.
-3. STRICT RECEIPT AUDIT: When the customer submits a payment receipt, you MUST visually verify it:
-   - Does it look like a valid banking/QR transfer receipt?
-   - Does the amount EXACTLY match the agreed rental price?
-   If the photo is irrelevant, blurry, or the amount is wrong, you MUST instantly reject it and ask them to send the correct receipt. Do NOT call save_booking_lead yet.
-4. TRIGGERING THE TOOL: ONLY when ALL documents (IC + License) are received AND the Payment Receipt passes the strict audit, you MUST call the "save_booking_lead" tool.
-5. POST-BOOKING RESPONSE: Once the 'save_booking_lead' tool is successfully triggered (which sends an email to the admin), you MUST reply to the customer in your persona's tone saying exactly: "Thank you for the booking, we will send you the confirmation order shortly." (Translate to your persona's casual Malay style).`;
-
-      const getCarAvailabilityDeclaration: FunctionDeclaration = {
-        name: "get_car_availability",
-        description: "Check if a specific car model is available for a given date.",
+      
+      const captureLeadDeclaration = {
+        name: "capture_customer_lead",
+        description: "Save customer details when they provide information like interest, email, order details, etc.",
         parameters: {
           type: Type.OBJECT,
           properties: {
-            car_model: {
-              type: Type.STRING,
-              description: "The model of the car (e.g., Axia, Bezza, Saga).",
-            },
-            date: {
-              type: Type.STRING,
-              description: "The date to check availability for. MUST be strictly in YYYY-MM-DD format (no time).",
-            },
+            lead_type: { type: Type.STRING, description: "Type of lead (e.g., query, booking, support)" },
+            data: { type: Type.STRING, description: "JSON string containing extracted fields from the conversation" }
           },
-          required: ["car_model", "date"],
+          required: ["lead_type", "data"],
         },
       };
 
-      const findNearestAvailableTimeDeclaration: FunctionDeclaration = {
-        name: "find_nearest_available_time",
-        description: "Find the nearest available pickup times for a specific car model when the exact requested time is fully booked.",
-        parameters: {
-          type: Type.OBJECT,
-          properties: {
-            car_model: {
-              type: Type.STRING,
-              description: "The model of the car (e.g., Axia, Bezza, Saga).",
-            },
-            target_datetime: {
-              type: Type.STRING,
-              description: "The requested local Malaysia datetime. MUST be strictly formatted as YYYY-MM-DDTHH:mm:00 (with the T).",
-            },
-          },
-          required: ["car_model", "target_datetime"],
-        },
-      };
-
-      const getAllCarsDeclaration: FunctionDeclaration = {
-        name: "get_all_cars",
-        description: "Get a list of all car models available for rent in the company fleet."
-      };
-
-      const saveBookingLeadDeclaration: FunctionDeclaration = {
-        name: "save_booking_lead",
-        description: "Save the complete booking details ONLY AFTER the customer has submitted the final Payment Receipt AND you have verified it.",
-        parameters: {
-          type: Type.OBJECT,
-          properties: {
-            vehicle_model: { type: Type.STRING, description: "The vehicle model they are booking." },
-            pickup_date: { type: Type.STRING, description: "The date of pickup." },
-            pickup_time: { type: Type.STRING, description: "The time of pickup." },
-            price: { type: Type.STRING, description: "The price of the rental." },
-            duration: { type: Type.STRING, description: "The duration of the rental." },
-            ic_url: { type: Type.STRING, description: "The URL of the IC image. MUST be present unless repeat customer." },
-            license_url: { type: Type.STRING, description: "The URL of the License image. MUST be present unless repeat customer." },
-            receipt_url: { type: Type.STRING, description: "The URL of the Payment Receipt image." }
-          },
-          required: ["vehicle_model", "pickup_date", "pickup_time", "price", "duration", "ic_url", "license_url", "receipt_url"],
-        },
-      };
-
-      const suggestKnowledgeTool: FunctionDeclaration = {
+      const suggestKnowledgeTool = {
         name: "suggest_knowledge_update",
-        description: "Only use this if you learn a completely new business rule from the conversation context. Suggest this fact to the admin.",
+        description: "Suggest a new topic and answer for the company knowledge base if the current one is missing or outdated.",
         parameters: {
           type: Type.OBJECT,
           properties: {
-            question: { type: Type.STRING, description: "The common customer question" },
-            best_answer: { type: Type.STRING, description: "The factual answer based on the context" },
-            category: { type: Type.STRING, description: "A short category name, e.g., 'Pricing', 'Policy'" }
+            question: { type: Type.STRING, description: "The customer's question" },
+            best_answer: { type: Type.STRING, description: "The correct answer based on context or team confirmation" },
+            category: { type: Type.STRING, description: "The category of this information (e.g., pricing, policy, general)" }
           },
-          required: ["question", "best_answer", "category"]
-        }
+          required: ["question", "best_answer", "category"],
+        },
       };
 
-      const activeTools = [getCarAvailabilityDeclaration, findNearestAvailableTimeDeclaration, getAllCarsDeclaration, saveBookingLeadDeclaration];
+      const activeTools = [captureLeadDeclaration];
       
       if (ENABLE_SELF_LEARNING && agentName && agentName.toLowerCase() === "laila") {
         activeTools.push(suggestKnowledgeTool);
@@ -1271,192 +1148,37 @@ BOOKING WORKFLOW RULE (CRITICAL):
           let toolResult = {};
           let toolCalled = false;
 
-          if (call.name === "get_car_availability") {
+          if (call.name === "capture_customer_lead") {
             toolCalled = true;
-            const args = call.args as any;
-
-            // Ensure exact model formatting to match database (System returns Proton Saga not Saga)
-            let formattedModel = args.car_model;
-            if (formattedModel.toLowerCase().includes('saga')) formattedModel = 'Proton Saga';
-            if (formattedModel.toLowerCase().includes('bezza')) formattedModel = 'Perodua Bezza';
-            if (formattedModel.toLowerCase().includes('axia')) formattedModel = 'Perodua Axia';
-
+            const args = call.args;
             try {
-              if (extSupabase) {
-                const subscriberId = Deno.env.get("EXTERNAL_SUBSCRIBER_ID") || 'be5c97d4-4a83-49dd-8f5d-5616c54c72fd';
-                const { data, error } = await extSupabase.rpc('check_car_availability', {
-                  p_model: formattedModel,
-                  p_date: args.date,
-                  p_subscriber_id: subscriberId
-                });
-
-                if (error) {
-                  console.error("RPC Error (Availability):", error.message);
-                  toolResult = { error: error.message };
-                } else {
-                  toolResult = typeof data === 'boolean' 
-                    ? { available: data } 
-                    : (data || { available: false, message: "No data returned from system." });
-                }
-              } else {
-                toolResult = { error: "External Supabase keys not configured." };
-              }
-            } catch (e: any) {
-              console.error("Tool Execution Error (Availability):", e.message);
-              toolResult = { error: e.message };
-            }
-          } else if (call.name === "find_nearest_available_time") {
-            toolCalled = true;
-            const args = call.args as any;
-            
-            let formattedModel = args.car_model;
-            if (formattedModel.toLowerCase().includes('saga')) formattedModel = 'Proton Saga';
-            if (formattedModel.toLowerCase().includes('bezza')) formattedModel = 'Perodua Bezza';
-            if (formattedModel.toLowerCase().includes('axia')) formattedModel = 'Perodua Axia';
-
-            try {
-              if (extSupabase) {
-                const subscriberId = Deno.env.get("EXTERNAL_SUBSCRIBER_ID") || 'be5c97d4-4a83-49dd-8f5d-5616c54c72fd';
-                // NOTE TO ADMIN: You must create this new RPC on your external database!
-                const { data, error } = await extSupabase.rpc('find_nearest_available_time', {
-                  p_model: formattedModel,
-                  p_target_datetime: args.target_datetime,
-                  p_subscriber_id: subscriberId
-                });
-
-                if (error || !data) {
-                   // Fallback when RPC doesn't exist yet but we want to simulate failure without crushing bot
-                   toolResult = { error: "Development Notice: The RPC find_nearest_available_time does not exist on your external database yet. Please tell the customer frankly: 'Maaf boss, untuk masa terdekat ni admin kena check manual jap. Boleh tunggu sekejap?' [NEEDS_AGENT_OVERRIDE]" };
-                } else {
-                  toolResult = { available_times: data };
-                }
-              } else {
-                toolResult = { error: "External Supabase keys not configured." };
-              }
-            } catch (err: any) {
-              console.error("External RPC Network Error (Nearest Times):", err.message);
-              toolResult = { error: err.message };
-            }
-          } else if (call.name === "get_all_cars") {
-            toolCalled = true;
-            try {
-              if (extSupabase) {
-                const subscriberId = Deno.env.get("EXTERNAL_SUBSCRIBER_ID") || 'be5c97d4-4a83-49dd-8f5d-5616c54c72fd';
-                const { data, error } = await extSupabase.rpc('get_all_car_models', {
-                  p_subscriber_id: subscriberId
-                });
-
-                if (error) {
-                  console.error("RPC Error (All Cars):", error.message);
-                  toolResult = { error: error.message };
-                } else {
-                  toolResult = { cars: data || [] };
-                }
-              } else {
-                toolResult = { error: "External Supabase keys not configured." };
-              }
-            } catch (e: any) {
-              console.error("Tool Execution Error (All Cars):", e.message);
-              toolResult = { error: e.message };
-            }
-          } else if (call.name === "save_booking_lead") {
-            toolCalled = true;
-            const args = call.args as any;
-            
-            try {
-              console.log("🚀 Saving booking lead:", JSON.stringify(args));
-              
-              const bookingData = {
+              const dataObj = typeof args.data === 'string' ? JSON.parse(args.data) : args.data;
+              await supabase.from('leads').insert([{
                 ticket_id: ticketId,
                 customer_phone: customerPhone,
-                vehicle_model: args.vehicle_model,
-                pickup_date: args.pickup_date,
-                pickup_time: args.pickup_time,
-                price: args.price,
-                duration: args.duration,
-                ic_url: args.ic_url || pastIcUrl || (isRepeatCustomer ? 'Repeat Customer - On File' : null),
-                license_url: args.license_url || pastLicenseUrl || (isRepeatCustomer ? 'Repeat Customer - On File' : null),
-                receipt_url: args.receipt_url,
-                status: 'Pending'
-              };
-
-              const { error } = await supabase.from('booking_leads').insert([bookingData]);
-
-              if (error) {
-                console.error("❌ Insert Failed:", error.message);
-                throw error;
-              }
-              
-              await supabase.from('tickets').update({ tag: 'Booking Pending', status: 'ai_handling' }).eq('id', ticketId);
-
-              const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-              // Force the email to the user's actual email to prevent misconfigured secrets from breaking it
-              const ADMIN_EMAIL = "ecatiktok002@gmail.com";
-              const FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "onboarding@resend.dev";
-
-              if (RESEND_API_KEY) {
-                try {
-                  const emailResponse = await fetch("https://api.resend.com/emails", {
-                    method: "POST",
-                    headers: {
-                      "Authorization": `Bearer ${RESEND_API_KEY}`,
-                      "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                      from: `ECA Car Rental <${FROM_EMAIL}>`,
-                      to: [ADMIN_EMAIL],
-                      subject: `🚨 New Booking: ${args.vehicle_model}`,
-                      html: `
-                        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-                          <h2>New Booking Received</h2>
-                          <p><strong>Customer Phone:</strong> ${customerPhone}</p>
-                          <p><strong>Vehicle:</strong> ${args.vehicle_model}</p>
-                          <p><strong>Pickup:</strong> ${args.pickup_date} @ ${args.pickup_time}</p>
-                          <p><strong>Price:</strong> ${args.price}</p>
-                          <p><strong>Duration:</strong> ${args.duration}</p>
-                        </div>
-                      `
-                    })
-                  });
-                  const emailData = await emailResponse.text();
-                  console.log("📧 Email Status:", emailResponse.status, emailData);
-                } catch (emailErr) {
-                  console.error("📧 Email Fetch Error:", emailErr);
-                }
-              } else {
-                console.log("⚠️ RESEND_API_KEY not set, skipping email notification.");
-              }
-
-              // Insert system message about successful booking so AI remembers later
-              await supabase.from("messages").insert([{
-                ticket_id: ticketId,
-                sender_type: "system",
-                message_text: `Booking successfully saved for ${args.vehicle_model} on ${args.pickup_date}. Booking flow complete, do not ask for receipt or documents again.`
+                lead_type: args.lead_type || 'general',
+                data: dataObj,
+                status: 'New'
               }]);
-
-              toolResult = { success: true, message: "Booking saved successfully. Admin will verify documents." };
-            } catch (err: any) {
-              console.error("❌ Booking Save Error:", err.message);
+              toolResult = { success: true, message: "Lead captured successfully." };
+            } catch (err) {
               toolResult = { error: err.message };
             }
           } else if (call.name === "suggest_knowledge_update") {
             toolCalled = true;
-            const args = call.args as any;
-            
-            // Execute database insert silently in the background
-            supabase
-              .from('company_knowledge')
-              .insert([{ 
+            const args = call.args;
+            try {
+              await supabase.from('company_knowledge').insert([{ 
                 topic: args.question, 
                 fact: args.best_answer, 
                 category: args.category, 
                 is_active: false 
-              }])
-              .then(({ error }) => {
-                if (error) console.warn("Silent failure on knowledge suggestion (safe to ignore):", error.message);
-              });
-            
-            toolResult = { success: true, message: "Draft saved for admin review." };
+              }]);
+              toolResult = { success: true, message: "Draft saved for admin review." };
+            } catch (err) {
+              console.warn("Silent failure on knowledge suggestion:", err.message);
+              toolResult = { success: true, message: "Draft saved for admin review." };
+            }
           }
 
           if (toolCalled) {
@@ -1514,73 +1236,6 @@ BOOKING WORKFLOW RULE (CRITICAL):
       aiResponseText = aiResponseText.replace(/^\*?\*?Assistant\*?\*?\s*:\s*/i, '').trim();
 
       const lowerResponse = aiResponseText.toLowerCase();
-      const impliesConfirmed = lowerResponse.includes("confirm") || 
-                               lowerResponse.includes("selesai") || 
-                               lowerResponse.includes("berjaya") || 
-                               lowerResponse.includes("cunnn") ||
-                               lowerResponse.includes("settle") ||
-                               lowerResponse.includes("siap") ||
-                               lowerResponse.includes("done") ||
-                               (lowerResponse.includes("admin") && lowerResponse.includes("check") && lowerResponse.includes("dokumen"));
-      
-      if (impliesConfirmed) {
-        try {
-          const { data: existingLead } = await supabase
-            .from('booking_leads')
-            .select('id')
-            .eq('ticket_id', ticketId)
-            .maybeSingle();
-
-          if (!existingLead) {
-            console.log("Auto-capturing booking details from conversation...");
-            const extractionPrompt = `Extract the vehicle model, pickup date, pickup time, price, duration, IC image URL, License image URL, and Payment Receipt image URL from this conversation history. 
-Look for patterns like [UPLOADED_IMAGE: url] or [UPLOADED_DOCUMENT: url] or [IMAGE_RECEIPT: url].
-Return ONLY a valid JSON object with keys: "vehicle_model", "pickup_date", "pickup_time", "price", "duration", "ic_url", "license_url", "receipt_url". 
-If you cannot find a value, use null. Do not include markdown formatting. 
-Conversation: ${JSON.stringify(contents)}`;
-            
-            const extraction = await callGeminiWithFallback({
-              contents: extractionPrompt
-            });
-            
-            let details = { 
-              vehicle_model: "Unknown", 
-              pickup_date: "Unknown", 
-              pickup_time: "Unknown", 
-              price: "Unknown", 
-              duration: "Unknown",
-              ic_url: null,
-              license_url: null,
-              receipt_url: null
-            };
-            try {
-              const jsonStr = extraction.text?.replace(/```json/g, '').replace(/```/g, '').trim() || "{}";
-              details = JSON.parse(jsonStr);
-            } catch (parseErr) {
-              console.error("Failed to parse extraction JSON:", parseErr);
-            }
-
-            await supabase.from('booking_leads').insert([{
-              ticket_id: ticketId,
-              customer_phone: customerPhone,
-              vehicle_model: details.vehicle_model || "Auto-captured",
-              pickup_date: details.pickup_date || "Auto-captured",
-              pickup_time: details.pickup_time || "Auto-captured",
-              price: details.price || "Auto-captured",
-              duration: details.duration || "Auto-captured",
-              ic_url: details.ic_url || pastIcUrl || (isRepeatCustomer ? 'Repeat Customer - On File' : null),
-              license_url: details.license_url || pastLicenseUrl || (isRepeatCustomer ? 'Repeat Customer - On File' : null),
-              receipt_url: details.receipt_url,
-              status: 'Pending'
-            }]);
-            
-            await supabase.from('tickets').update({ tag: 'Booking Pending', status: 'ai_handling' }).eq('id', ticketId);
-          }
-        } catch (fallbackErr) {
-          console.error("Auto-capture fallback failed:", fallbackErr);
-        }
-      }
-
       return aiResponseText;
 
     } catch (error: any) {

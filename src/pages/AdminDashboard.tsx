@@ -68,7 +68,7 @@ export default function AdminDashboard() {
 
       // 1. Fetch leads for this month & Revenue
       const { data: monthLeads } = await supabase
-        .from('booking_leads')
+        .from('leads')
         .select('*')
         .gte('created_at', startOfMonth);
 
@@ -76,14 +76,14 @@ export default function AdminDashboard() {
       const modelCounts: Record<string, number> = {};
 
       monthLeads?.forEach(lead => {
-        if (lead.status === 'Pending') {
-          // extract digits from "RM90 for 1 day" -> 90
-          const numbers = lead.price?.match(/\d+/g);
+        if (lead.status === 'New' && lead.data?.price) {
+          // extract digits from price if it exists
+          const numbers = String(lead.data.price).match(/\d+/g);
           if (numbers && numbers.length > 0) {
             revenue += parseInt(numbers[0], 10);
           }
         }
-        const model = lead.vehicle_model || 'Unknown';
+        const model = lead.lead_type || 'Unknown';
         modelCounts[model] = (modelCounts[model] || 0) + 1;
       });
 
@@ -107,9 +107,9 @@ export default function AdminDashboard() {
 
       // 3. Pending Approvals Queue
       const { data: pending } = await supabase
-        .from('booking_leads')
+        .from('leads')
         .select('*')
-        .eq('status', 'Pending')
+        .eq('status', 'New')
         .order('created_at', { ascending: false })
         .limit(5);
       setPendingApprovals(pending || []);
@@ -139,7 +139,7 @@ export default function AdminDashboard() {
 
     // Real-time subscriptions for multiple tables
     const leadsSub = supabase.channel('dashboard_leads')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'booking_leads' }, fetchDashboardData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, fetchDashboardData)
       .subscribe();
       
     const ticketsSub = supabase.channel('dashboard_tickets')
@@ -159,7 +159,7 @@ export default function AdminDashboard() {
 
   const statCards = [
     { label: 'Total Leads (Month)', value: metrics.totalLeadsMonth, icon: Users, trend: 'Growth', color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Pending Revenue (Pipeline)', value: `RM ${metrics.pendingRevenue}`, icon: DollarSign, trend: 'Pipeline', color: 'text-emerald-600', bg: 'bg-emerald-50', link: '/admin/bookings' },
+    { label: 'Pending Revenue (Pipeline)', value: `RM ${metrics.pendingRevenue}`, icon: DollarSign, trend: 'Pipeline', color: 'text-emerald-600', bg: 'bg-emerald-50', link: '/admin/leads' },
     { label: 'AI Resolution Rate', value: `${metrics.aiResolutionRate}%`, icon: TrendingUp, trend: 'Performance', color: 'text-violet-600', bg: 'bg-violet-50' },
   ];
 
@@ -232,7 +232,7 @@ export default function AdminDashboard() {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
               <Car className="w-5 h-5 text-slate-400" />
-              Most Requested Models
+              Most Common Lead Types
             </h2>
             {popularModels.length === 0 ? (
               <div className="text-sm text-slate-400 text-center py-4">No data available yet.</div>
@@ -306,30 +306,30 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              {/* Section: Pending Bookings */}
+              {/* Section: Pending Leads */}
               <div className="p-4 px-6">
                  <div className="flex items-center justify-between mb-4">
-                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pending Bookings</h3>
-                   <Link to="/admin/bookings" className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline">View All</Link>
+                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">New Leads Captured</h3>
+                   <Link to="/admin/leads" className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline">View All</Link>
                  </div>
                  {pendingApprovals.length === 0 ? (
-                    <div className="text-sm text-slate-400 text-center py-8 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">No pending bookings.</div>
+                    <div className="text-sm text-slate-400 text-center py-8 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">No new leads.</div>
                  ) : (
                    <div className="space-y-3">
-                     {pendingApprovals.map(lead => (
+                     {pendingApprovals.map((lead: any) => (
                        <div key={lead.id} className="flex items-center justify-between bg-white hover:bg-slate-50 transition-colors p-3 rounded-xl border border-slate-100 shadow-sm">
                          <div className="min-w-0 flex-1 mr-4">
-                           <p className="text-sm font-semibold text-slate-900 truncate">{lead.vehicle_model}</p>
-                           <p className="text-xs text-slate-500 truncate">{lead.customer_phone} • {lead.pickup_date}</p>
+                           <p className="text-sm font-semibold text-slate-900 truncate">{lead.lead_type}</p>
+                           <p className="text-xs text-slate-500 truncate">{lead.customer_phone}</p>
                          </div>
                          <div className="flex items-center gap-3 shrink-0">
-                           <Badge variant="warning" className="hidden sm:inline-flex">Pending</Badge>
+                           <Badge variant="warning" className="hidden sm:inline-flex">New</Badge>
                            <button 
-                             onClick={() => navigate('/admin/bookings')} 
+                             onClick={() => navigate('/admin/leads')} 
                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-white text-slate-700 border border-slate-200 rounded-lg shadow-sm hover:bg-slate-100 transition whitespace-nowrap"
                            >
                              <FileCheck className="w-3.5 h-3.5" />
-                             Verify
+                             Review
                            </button>
                          </div>
                        </div>

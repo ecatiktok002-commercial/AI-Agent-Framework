@@ -5,7 +5,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import TicketsPage from './pages/TicketsPage';
 import AgentsPage from './pages/AgentsPage';
 import KnowledgeBase from './pages/KnowledgeBase';
-import BookingsPage from './pages/BookingsPage';
+import LeadsPage from './pages/LeadsPage';
 import LoginPage from './pages/LoginPage';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -24,7 +24,7 @@ export default function App() {
               <Route path="tickets" element={<TicketsPage />} />
               <Route path="agents" element={<AgentsPage />} />
               <Route path="knowledge-base" element={<KnowledgeBase />} />
-              <Route path="bookings" element={<BookingsPage />} />
+              <Route path="leads" element={<LeadsPage />} />
               <Route path="analytics" element={<div className="p-8">Analytics Coming Soon</div>} />
               <Route index element={<Navigate to="/admin/dashboard" replace />} />
             </Route>
