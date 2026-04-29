@@ -21,6 +21,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabase';
 
+import { useDashboardSettings } from '../hooks/useDashboardSettings';
+
 interface SidebarProps {
   isOpen?: boolean;
   setIsOpen?: (isOpen: boolean) => void;
@@ -30,6 +32,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { agent, logout, updateAgent } = useAuth();
+  const { logoUrl } = useDashboardSettings();
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(location.pathname.includes('/settings'));
   
@@ -103,13 +106,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
         "w-64 bg-white border-r border-slate-200 flex flex-col h-screen fixed md:sticky top-0 z-50 transition-transform duration-300 ease-in-out",
         isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}>
-        <div className="p-6 flex items-center justify-between">
+        <div className="p-6 flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <img src="https://tnvhriiyuzjhtdqfufmh.supabase.co/storage/v1/object/public/public-assets/logo.png" alt="Logo" className="w-8 h-8 rounded-lg object-cover" />
-            <span className="font-bold text-xl tracking-tight">HelpDesk</span>
+            {logoUrl && (
+              <div className="w-10 h-10 shrink-0 bg-white rounded-lg flex items-center justify-center overflow-hidden border border-slate-100 shadow-sm">
+                <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
+              </div>
+            )}
+            <span className="font-bold text-xl tracking-tight leading-tight text-slate-800">
+              Waki Sales<br className="hidden md:block"/>Dashboard
+            </span>
           </div>
           <button 
-            className="md:hidden p-2 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
+            className="md:hidden p-2 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors -mr-2"
             onClick={() => setIsOpen?.(false)}
           >
             <X className="w-5 h-5" />

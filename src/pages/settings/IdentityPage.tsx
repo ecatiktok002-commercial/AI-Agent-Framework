@@ -17,7 +17,9 @@ import {
   MessageSquare,
   Activity,
   Users,
-  Save
+  Save,
+  Image as ImageIcon,
+  Upload
 } from 'lucide-react';
 import { Badge } from '../../components/Badge';
 import { cn } from '../../utils';
@@ -42,6 +44,8 @@ export default function IdentityPage() {
   const [globalTone, setGlobalTone] = useState('Professional');
   const [globalInstructions, setGlobalInstructions] = useState('');
   const [isSavingGlobal, setIsSavingGlobal] = useState(false);
+  const [dashboardLogoUrl, setDashboardLogoUrl] = useState('');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   useEffect(() => {
     fetchAgents();
@@ -53,7 +57,7 @@ export default function IdentityPage() {
       let query = supabase
         .from('system_settings')
         .select('key, value')
-        .in('key', ['ai_agent_name', 'ai_tone_style', 'ai_personality_instructions']);
+        .in('key', ['ai_agent_name', 'ai_tone_style', 'ai_personality_instructions', 'dashboard_logo_url']);
 
       const { data: settings, error } = await query;
 
@@ -62,13 +66,14 @@ export default function IdentityPage() {
         const { data: fallbackSettings } = await supabase
           .from('system_settings')
           .select('key, value')
-          .in('key', ['ai_agent_name', 'ai_tone_style', 'ai_personality_instructions']);
+          .in('key', ['ai_agent_name', 'ai_tone_style', 'ai_personality_instructions', 'dashboard_logo_url']);
         
         if (fallbackSettings) {
           fallbackSettings.forEach(s => {
             if (s.key === 'ai_agent_name') setGlobalName(s.value);
             if (s.key === 'ai_tone_style') setGlobalTone(s.value);
             if (s.key === 'ai_personality_instructions') setGlobalInstructions(s.value);
+            if (s.key === 'dashboard_logo_url') setDashboardLogoUrl(s.value);
           });
         }
         return;
@@ -79,6 +84,7 @@ export default function IdentityPage() {
           if (s.key === 'ai_agent_name') setGlobalName(s.value);
           if (s.key === 'ai_tone_style') setGlobalTone(s.value);
           if (s.key === 'ai_personality_instructions') setGlobalInstructions(s.value);
+          if (s.key === 'dashboard_logo_url') setDashboardLogoUrl(s.value);
         });
       }
     } catch (error) {
@@ -92,7 +98,8 @@ export default function IdentityPage() {
       const updates = [
         { key: 'ai_agent_name', value: globalName },
         { key: 'ai_tone_style', value: globalTone },
-        { key: 'ai_personality_instructions', value: globalInstructions }
+        { key: 'ai_personality_instructions', value: globalInstructions },
+        { key: 'dashboard_logo_url', value: dashboardLogoUrl }
       ];
 
       const { error } = await supabase
@@ -106,6 +113,48 @@ export default function IdentityPage() {
       showToast('Failed to save changes', 'error');
     } finally {
       setIsSavingGlobal(false);
+    }
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.includes('jpeg') && !file.type.includes('png')) {
+      showToast('Only JPG and PNG are supported', 'error');
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `logo-${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError, data } = await supabase.storage
+        .from('assets')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('assets')
+        .getPublicUrl(filePath);
+
+      setDashboardLogoUrl(publicUrl);
+      
+      const { error: dbError } = await supabase
+        .from('system_settings')
+        .upsert({ key: 'dashboard_logo_url', value: publicUrl }, { onConflict: 'key' });
+        
+      if (dbError) throw dbError;
+      
+      showToast('Logo updated successfully');
+    } catch (error: any) {
+      console.error('Error uploading logo:', error);
+      showToast('Failed to upload logo', 'error');
+    } finally {
+      setIsUploadingLogo(false);
     }
   };
 
@@ -280,6 +329,57 @@ export default function IdentityPage() {
 
   return (
     <div className="p-4 md:p-8 space-y-12 max-w-7xl mx-auto">
+      {/* Dashboard Customization Section */}
+      <section className="space-y-6">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <ImageIcon className="w-5 h-5 text-indigo-600" />
+            Dashboard Logo Settings
+          </h2>
+          <p className="text-sm text-slate-500">Customize the logo displayed in the Waki Sales Dashboard.</p>
+        </div>
+        
+        <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden p-8">
+          <div className="flex flex-col md:flex-row items-center gap-8">
+            <div className="w-32 h-32 bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl flex items-center justify-center overflow-hidden relative">
+              {isUploadingLogo ? (
+                <div className="w-6 h-6 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+              ) : dashboardLogoUrl ? (
+                <img src={dashboardLogoUrl} alt="Dashboard Logo" className="w-full h-full object-contain" />
+              ) : (
+                <ImageIcon className="w-10 h-10 text-slate-300" />
+              )}
+            </div>
+            
+            <div className="space-y-3">
+              <label className="cursor-pointer flex items-center gap-2 px-6 py-3 bg-black text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-all shadow-md active:scale-95">
+                <Upload className="w-4 h-4" />
+                <span>Upload Custom Logo</span>
+                <input 
+                  type="file" 
+                  accept=".jpg,.jpeg,.png"
+                  onChange={handleLogoUpload}
+                  className="hidden" 
+                  disabled={isUploadingLogo}
+                />
+              </label>
+              <p className="text-xs font-semibold text-slate-500">Supports JPG, PNG (Max 5MB).<br/>Recommended size: 200x200px</p>
+              {dashboardLogoUrl && (
+                <button 
+                  onClick={async () => {
+                    setDashboardLogoUrl('');
+                    await supabase.from('system_settings').delete().eq('key', 'dashboard_logo_url');
+                  }}
+                  className="text-xs font-bold text-red-500 hover:text-red-700 underline"
+                >
+                  Remove Logo
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Global Business Persona Section */}
       <section className="space-y-6">
         <div>
