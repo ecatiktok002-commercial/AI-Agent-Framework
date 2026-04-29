@@ -38,7 +38,7 @@ If there are image URLs embedded like ![Diagram](URL), attach the EXACT matching
 Output STRICTLY as a JSON array with exactly these keys: "category", "topic", "fact", and "image_url" (can be null).`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: doc.content_markdown }] }],
       config: {
         systemInstruction,

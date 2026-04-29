@@ -1052,10 +1052,10 @@ ${formattedFacts}`;
         try {
           return await ai.models.generateContent({
             ...requestParams,
-            model: "gemini-3-flash-preview"
+            model: "gemini-2.5-flash"
           });
         } catch (error: any) {
-          console.warn(`⚠️ Model gemini-3-flash-preview failed: ${error.message}.`);
+          console.warn(`⚠️ Model gemini-2.5-flash failed: ${error.message}.`);
           throw error;
         }
       };
