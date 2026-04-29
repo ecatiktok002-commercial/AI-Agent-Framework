@@ -1,0 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  
+  @keyframes pulsate-red {
+    0% { background-color: rgba(254, 226, 226, 0.5); }
+    50% { background-color: rgba(254, 202, 202, 0.8); }
+    100% { background-color: rgba(254, 226, 226, 0.5); }
+  }
+}
+
+.animate-pulsate-red {
+  animation: pulsate-red 2s ease-in-out infinite;
+}
