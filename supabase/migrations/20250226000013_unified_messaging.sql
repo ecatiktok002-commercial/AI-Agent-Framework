@@ -4,7 +4,15 @@ ALTER TABLE agents ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'agent' CHECK (rol
 
 -- 2. Update Tickets Table
 -- Rename phone_number to customer_phone
-ALTER TABLE tickets RENAME COLUMN phone_number TO customer_phone;
+DO $$
+BEGIN
+  IF EXISTS(SELECT *
+    FROM information_schema.columns
+    WHERE table_name='tickets' and column_name='phone_number')
+  THEN
+      ALTER TABLE tickets RENAME COLUMN phone_number TO customer_phone;
+  END IF;
+END $$;
 
 -- Drop the old index and create a new one for the renamed column
 DROP INDEX IF EXISTS idx_tickets_phone_number;

@@ -1105,9 +1105,10 @@ ${formattedFacts}`;
       const conversationFlowRule = `
 CONVERSATION RULES (STRICT):
 ${greetingRule}
-* BE CONCISE. WhatsApp users prefer short, direct messages.
-* ONLY answer what the customer asked. Do not provide extra information or "fun facts" unless directly relevant.
-* If providing a list (like prices), keep it brief and well-formatted.
+* BE EXTREMELY CONCISE AND BRIEF. WhatsApp users prefer ultra-short, direct, 1-2 sentence messages.
+* DO NOT write long paragraphs. DO NOT use bullet points unless directly asked to list options.
+* Answer ONLY the immediate question. Do not volunteer extra information, marketing fluff, or long explanations.
+* If a customer asks a simple question (e.g., "what is the benefit?"), give a 1-2 sentence answer. Limit everything to mobile-friendly length.
 * Never repeat greetings in the middle of a chat.
 `;
 
