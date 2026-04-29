@@ -12,6 +12,22 @@ export interface ResponseStyleRules {
   formalLanguageMode: boolean;
 }
 
+export interface Business {
+  id: string;
+  name: string;
+  whatsapp_phone_number_id: string;
+  meta_access_token: string;
+  created_at?: string;
+}
+
+export interface PdfDocument {
+  id: string;
+  file_name: string;
+  content_markdown: string;
+  status: 'pending' | 'exported' | 'rejected';
+  created_at: string;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -71,14 +87,26 @@ export interface RoutingRule {
 
 export interface KnowledgeFact {
   id: string;
+  product_name: string;
   category: string;
   topic: string;
   fact: string;
+  image_url?: string | null;
   is_active: boolean;
   created_at: string;
 }
 
 export interface GenericLead {
+  id: string;
+  ticket_id?: string;
+  customer_phone: string;
+  lead_type: string;
+  data: Record<string, any>;
+  status: 'New' | 'InProgress' | 'Done' | 'Rejected';
+  created_at: string;
+}
+
+export interface BookingLead {
   id: string;
   ticket_id?: string;
   customer_phone: string;

@@ -71,6 +71,9 @@ serve(async (req) => {
       // ------------------------------------------
       if (body.action === "send-message") {
         const { ticket_id, message_text, agent_id } = body;
+        let activeAccessToken = META_ACCESS_TOKEN;
+        let activePhoneId = META_PHONE_ID;
+        // In a real multi-tenant app, fetch business credentials here using the ticket_id or agent_id
 
         if (!ticket_id || !message_text || !agent_id) {
           throw new Error("Missing ticket_id, message_text, or agent_id");
@@ -124,7 +127,7 @@ serve(async (req) => {
 
         // 5. Send to WhatsApp
         console.log(`📤 Sending Agent Reply to ${customerPhone}`);
-        const waResponse = await sendWhatsAppMessage(customerPhone, finalMessage);
+        const waResponse = await sendWhatsAppMessage(customerPhone, finalMessage, activeAccessToken, activePhoneId);
         
         if (waResponse.error) {
           console.error("❌ WhatsApp API Error:", JSON.stringify(waResponse.error));
@@ -166,6 +169,8 @@ serve(async (req) => {
       // ------------------------------------------
       if (body.action === "assign-agent") {
         const { ticket_id, agent_id } = body;
+        let activeAccessToken = META_ACCESS_TOKEN;
+        let activePhoneId = META_PHONE_ID;
 
         if (!ticket_id || !agent_id) {
           throw new Error("Missing ticket_id or agent_id");
@@ -193,7 +198,7 @@ serve(async (req) => {
 
         // 3. Notify Customer
         const notification = "An agent has been assigned to your request. Please wait a moment while they review your case.";
-        await sendWhatsAppMessage(ticket.customer.phone_number, notification);
+        await sendWhatsAppMessage(ticket.customer.phone_number, notification, activeAccessToken, activePhoneId);
 
         // 4. Log System Messages
         await supabase.from("messages").insert([
@@ -225,6 +230,8 @@ serve(async (req) => {
       // ------------------------------------------
       if (body.action === "take-over") {
         const { ticket_id, agent_id } = body;
+        let activeAccessToken = META_ACCESS_TOKEN;
+        let activePhoneId = META_PHONE_ID;
 
         if (!ticket_id || !agent_id) {
           throw new Error("Missing ticket_id or agent_id");
@@ -489,6 +496,25 @@ serve(async (req) => {
         const changes = entry?.changes?.[0];
         const value = changes?.value;
         const message = value?.messages?.[0];
+        const phoneNumberId = value?.metadata?.phone_number_id;
+
+        let targetBusinessId = null;
+        let activeAccessToken = META_ACCESS_TOKEN;
+        let activePhoneId = META_PHONE_ID;
+
+        if (phoneNumberId) {
+          const { data: business } = await supabase
+            .from("businesses")
+            .select("id, meta_access_token, whatsapp_phone_number_id")
+            .eq("whatsapp_phone_number_id", phoneNumberId)
+            .single();
+
+          if (business) {
+            targetBusinessId = business.id;
+            activeAccessToken = business.meta_access_token;
+            activePhoneId = business.whatsapp_phone_number_id;
+          }
+        }
 
         if (message) {
           const from = message.from; // Customer phone number
@@ -505,9 +531,9 @@ serve(async (req) => {
             
             // NEW APPROVAL MESSAGE (No longer asks for IC because AI already got it)
             const approvalMsg = "✅ *Booking Confirmed!*\n\nTerima kasih boss! Payment and dokumen semua dah lepas verify. payment ca mintak? Booking awak dah berjaya di-lock. Jumpa masa hari pickup nanti! 🎉";
-            await sendWhatsAppMessage(customerPhoneToApprove, approvalMsg);
+            await sendWhatsAppMessage(customerPhoneToApprove, approvalMsg, activeAccessToken, activePhoneId);
 
-            await sendWhatsAppMessage(ADMIN_PHONE, `✅ Approval sent to ${customerPhoneToApprove}. Booking is now confirmed.`);
+            await sendWhatsAppMessage(ADMIN_PHONE, `✅ Approval sent to ${customerPhoneToApprove}. Booking is now confirmed.`, activeAccessToken, activePhoneId); // to ${customerPhoneToApprove}. Booking is now confirmed.`);
             
             return new Response("EVENT_RECEIVED", { status: 200, headers: corsHeaders });
           }
@@ -515,8 +541,8 @@ serve(async (req) => {
           // If the message is from the Admin and starts with REJECT
           if (from === ADMIN_PHONE && text && text.toUpperCase().startsWith("REJECT ")) {
             const customerPhoneToReject = text.split(" ")[1].trim();
-            await sendWhatsAppMessage(customerPhoneToReject, "❌ *Payment Failed*\n\nMaaf boss, admin check payment tak masuk lagi. Boleh try check balik bank history atau resit tak?");
-            await sendWhatsAppMessage(ADMIN_PHONE, `❌ Rejection sent to ${customerPhoneToReject}.`);
+            await sendWhatsAppMessage(customerPhoneToReject, "❌ *Payment Failed*\n\nMaaf boss, admin check payment tak masuk lagi. Boleh try check balik bank history atau resit tak?", activeAccessToken, activePhoneId); // "❌ *Payment Failed*\n\nMaaf boss, admin check payment tak masuk lagi. Boleh try check balik bank history atau resit tak?");
+            await sendWhatsAppMessage(ADMIN_PHONE, `❌ Rejection sent to ${customerPhoneToReject}.`, activeAccessToken, activePhoneId); // to ${customerPhoneToReject}.`);
             return new Response("EVENT_RECEIVED", { status: 200, headers: corsHeaders });
           }
           // -------------------------
@@ -551,7 +577,7 @@ serve(async (req) => {
               if (!customer) {
                 const { data: newCustomer, error: customerInsertError } = await supabase
                   .from("customers")
-                  .insert([{ phone_number: from, name: customerName }])
+                  .insert([{ phone_number: from, name: customerName, business_id: targetBusinessId }])
                   .select()
                   .single();
                 
@@ -662,6 +688,7 @@ serve(async (req) => {
                   .from("tickets")
                   .insert([{ 
                     customer_id: customer.id, 
+                    business_id: targetBusinessId,
                     status: "ai_handling",
                     assigned_agent_id: assignedAgentId
                   }])
@@ -743,6 +770,44 @@ serve(async (req) => {
               }
               // --- DEBOUNCE LOGIC END ---
 
+              // --- KEYWORD HANDOFF LOGIC ---
+              const { data: handoffSettings } = await supabase
+                .from('system_settings')
+                .select('value')
+                .eq('key', 'ai_handoff_keywords')
+                .eq('business_id', targetBusinessId)
+                .maybeSingle();
+
+              const handoffKeywordsStr = handoffSettings?.value || "doctor, pacemaker, pregnant, broken machine, repair, human";
+              const handoffKeywords = handoffKeywordsStr.split(',').map((k: string) => k.trim().toLowerCase()).filter((k: string) => k.length > 0);
+              const messageTextLower = text.toLowerCase();
+              let shouldHandoff = false;
+              for (const keyword of handoffKeywords) {
+                if (messageTextLower.includes(keyword)) {
+                  shouldHandoff = true;
+                  break;
+                }
+              }
+
+              if (shouldHandoff) {
+                console.log(`⚠️ Handoff keyword detected in ticket ${ticket.id}. Passing to human.`);
+                await supabase
+                  .from("tickets")
+                  .update({ status: "waiting_assignment" })
+                  .eq("id", ticket.id);
+                  
+                const handoffMessage = "I understand you have a specific request. Let me transfer you to our human team to assist you further. They will contact you shortly.";
+                await supabase.from("messages").insert([{
+                  ticket_id: ticket.id,
+                  sender_type: "ai",
+                  message_text: handoffMessage
+                }]);
+                await supabase.from("tickets").update({ last_message: handoffMessage }).eq("id", ticket.id);
+                await sendWhatsAppMessage(from, handoffMessage, activeAccessToken, activePhoneId);
+                return new Response('Handoff executed', { status: 200, headers: corsHeaders });
+              }
+              // -----------------------------
+
               // 4. AI Logic
               if (freshTicket.status === "waiting_assignment") {
                 console.log(`🛑 Ticket is waiting for human agent. Muting AI response.`);
@@ -753,8 +818,32 @@ serve(async (req) => {
                 let personaInstructions = null;
                 let agentName = "AI Assistant";
                 let referenceSnippets = null;
+                
+                // Fetch default identity from settings if no specific agent is assigned or mirroring is off
+                const { data: identitySettings } = await supabase
+                  .from('system_settings')
+                  .select('key, value')
+                  .in('key', ['ai_agent_name', 'ai_tone_style', 'ai_personality_instructions'])
+                  .eq('business_id', targetBusinessId);
+                
+                let defaultAgentName = "AI Assistant";
+                let defaultTone = "";
+                let defaultEmoji = "Low";
+                let defaultInstructions = "";
 
-                // If ticket is assigned or waiting, try to get the agent's persona
+                if (identitySettings) {
+                  identitySettings.forEach(s => {
+                    if (s.key === 'ai_agent_name') defaultAgentName = s.value;
+                    if (s.key === 'ai_tone_style') defaultTone = s.value;
+                    if (s.key === 'ai_emoji_usage') defaultEmoji = s.value;
+                    if (s.key === 'ai_personality_instructions') defaultInstructions = s.value;
+                  });
+                }
+
+                agentName = defaultAgentName;
+                personaInstructions = `${defaultTone ? `Tone: ${defaultTone}\n` : ''}${defaultEmoji ? `Emoji Usage Level: ${defaultEmoji}\n` : ''}${defaultInstructions}`;
+
+                // If ticket is assigned, try to get the agent's persona (overrides default)
                 if (freshTicket.assigned_agent_id) {
                   const { data: agent } = await supabase
                     .from("agents")
@@ -791,17 +880,15 @@ serve(async (req) => {
                   .limit(15);
 
                 // Fetch handoff keywords from settings
-                const { data: keywordSettings } = await supabase
-                  .from('system_settings')
-                  .select('value')
-                  .eq('key', 'ai_handoff_keywords')
-                  .single();
+                let keywordQ = supabase.from('system_settings').select('value').eq('key', 'ai_handoff_keywords');
+                if (targetBusinessId) keywordQ = keywordQ.eq('business_id', targetBusinessId);
+                const { data: keywordSettings } = await keywordQ.single();
                 
                 const customKeywords = keywordSettings?.value 
                   ? keywordSettings.value.split(',').map((k: string) => k.trim().toLowerCase()).filter((k: string) => k.length > 0)
                   : [];
 
-                const aiResponse = await generateAIResponse(text, customerName, from, ticket.id, personaInstructions, agentName, history?.reverse().slice(0, -1), referenceSnippets, isRepeatCustomer, pastIcUrl, pastLicenseUrl);
+                const aiResponse = await generateAIResponse(text, customerName, from, ticket.id, personaInstructions, agentName, history?.reverse().slice(0, -1), referenceSnippets, isRepeatCustomer, pastIcUrl, pastLicenseUrl, targetBusinessId);
                 
                 // Check for handover intent or AI-triggered escalation
                 const defaultKeywords = ["human", "agent", "person", "staff", "speak to someone", "talk to someone", "orang", "staf", "admin", "bantuan"];
@@ -842,16 +929,31 @@ serve(async (req) => {
                 
                 // Clean the message before it hits WhatsApp
                 let finalMessage = aiResponse.replace(/\[NEEDS_AGENT\]/g, '').trim();
+                
+                // Extract images
+                const imageParamsRegex = /\[SEND_IMAGE:\s*(https?:\/\/[^\]]+)\]/g;
+                const matchedImages = [];
+                let matchObj;
+                while ((matchObj = imageParamsRegex.exec(finalMessage)) !== null) {
+                  matchedImages.push(matchObj[1]);
+                }
+                finalMessage = finalMessage.replace(/\[SEND_IMAGE:\s*(https?:\/\/[^\]]+)\]/g, '').trim();
+
                 const needsQR = finalMessage.includes('[SEND_QR]');
                 finalMessage = finalMessage.replace(/\[SEND_QR\]/g, '').trim();
 
+                // Send images FIRST
+                for (const imgUrl of matchedImages) {
+                  await sendWhatsAppImage(from, imgUrl, activeAccessToken, activePhoneId);
+                }
+
                 console.log(`📤 Sending AI response to ${from} (${finalMessage.length} chars)`);
-                await sendWhatsAppMessage(from, finalMessage);
+                await sendWhatsAppMessage(from, finalMessage, activeAccessToken, activePhoneId);
 
                 // If AI decided to send bank details, send the QR image immediately after the text
                 if (needsQR) {
                   const qrUrl = "https://tnvhriiyuzjhtdqfufmh.supabase.co/storage/v1/object/public/public-assets/ECA%20RHB%20QR.jpeg";
-                  await sendWhatsAppImage(from, qrUrl);
+                  await sendWhatsAppImage(from, qrUrl, activeAccessToken, activePhoneId);
                 }
               }
             } catch (err) {
@@ -893,12 +995,12 @@ serve(async (req) => {
 });
 
 // Helper: Send WhatsApp Message
-async function sendWhatsAppMessage(to: string, text: string) {
-  const url = `https://graph.facebook.com/v17.0/${META_PHONE_ID}/messages`;
+async function sendWhatsAppMessage(to: string, text: string, token: string = META_ACCESS_TOKEN!, phoneId: string = META_PHONE_ID!) {
+  const url = `https://graph.facebook.com/v17.0/${phoneId}/messages`;
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${META_ACCESS_TOKEN}`,
+      "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -912,7 +1014,7 @@ async function sendWhatsAppMessage(to: string, text: string) {
 }
 
 // Helper: Generate AI Response using Gemini
-async function generateAIResponse(userInput: string, customerName: string, customerPhone: string, ticketId: string, customPersona?: string, agentName?: string, history: any[] = [], referenceSnippets?: string, isRepeatCustomer: boolean = false, pastIcUrl?: string | null, pastLicenseUrl?: string | null) {
+async function generateAIResponse(userInput: string, customerName: string, customerPhone: string, ticketId: string, customPersona?: string, agentName?: string, history: any[] = [], referenceSnippets?: string, isRepeatCustomer: boolean = false, pastIcUrl?: string | null, pastLicenseUrl?: string | null, targetBusinessId?: string | null) {
   let currentKey = GEMINI_API_KEY || '';
   let attempts = 0;
   const maxAttempts = GEMINI_BACKUP_KEY ? 2 : 1;
@@ -924,13 +1026,12 @@ async function generateAIResponse(userInput: string, customerName: string, custo
       const ai = new GoogleGenAI({ apiKey: currentKey });
       
       // 1. Fetch Company Knowledge Base Facts (RAG)
-      const { data: facts } = await supabase
-        .from('company_knowledge')
-        .select('category, topic, fact')
-        .eq('is_active', true);
+      let factsQuery = supabase.from('company_knowledge').select('category, topic, fact, image_url').eq('is_active', true);
+      if (targetBusinessId) factsQuery = factsQuery.eq('business_id', targetBusinessId);
+      const { data: facts } = await factsQuery;
 
       const formattedFacts = facts && facts.length > 0 
-        ? facts.map(f => `[${f.category} - ${f.topic}]: ${f.fact}`).join('\n')
+        ? facts.map(f => `[${f.category} - ${f.topic}]: ${f.fact}${f.image_url ? ` (IMAGE_URL: ${f.image_url})` : ''}`).join('\n')
         : "No specific company facts available.";
 
       const knowledgeBaseBlock = `COMPANY KNOWLEDGE BASE: You must strictly adhere to the following company facts. 
@@ -938,6 +1039,7 @@ async function generateAIResponse(userInput: string, customerName: string, custo
 * Do not invent policies, prices, or services not listed here.
 * If the information is not in the knowledge base, politely inform the customer that you need a moment to check or double-check with the team.
 * CRITICAL: NEVER mention that you are an AI, a bot, or that you are passing them to a "human agent". You MUST act as a real human staff member at all times.
+* IMAGE INSTRUCTION: If your knowledge base fact provides an IMAGE_URL, you MUST include exactly "[SEND_IMAGE: <image_url>]" in your response so the system can send the diagram to the customer. Put it anywhere in your message.
 ${formattedFacts}`;
 
       const isFirstMessage = !history || history.length === 0;
@@ -989,20 +1091,25 @@ ${greetingRule}
 
       
       // 2. Fetch Global System Prompt from Database
-      const { data: settings } = await supabase
-        .from('system_settings')
-        .select('value')
-        .eq('key', 'ai_system_prompt')
-        .single();
+      let settingsQuery = supabase.from('system_settings').select('value').eq('key', 'ai_system_prompt');
+      if (targetBusinessId) settingsQuery = settingsQuery.eq('business_id', targetBusinessId);
+      const { data: settings } = await settingsQuery.single();
 
       const globalPrompt = settings?.value || "You are an AI Support Assistant. Your goal is to provide fast, accurate, and helpful support. If you don't know the answer, tell the customer kindly and use [NEEDS_AGENT].";
 
       const assignedName = agentName || "AI Support";
       const assignedPersona = customPersona || "Professional and polite";
 
+      const safetyRules = `SAFETY GUARDRAILS (STRICT):
+* You are a Technical Wellness Consultant for a Health Equipment Retailer.
+* Never guarantee medical cures.
+* You must clearly state that this is a wellness device, not a medical cure.
+* If the user mentions pregnancy, pacemakers, or severe heart conditions, immediately halt recommendations and advise them to consult a doctor.
+* You must retrieve device specifications, therapy benefits (e.g., cellular vitality, circulation), warranty info, and pricing EXCLUSIVELY from the COMPANY KNOWLEDGE BASE.`;
+
       const dynamicPersonaContext = `=== YOUR ASSIGNED IDENTITY ===\nYour Name: ${assignedName}\nYour Specific Personality & Tone: ${assignedPersona}\n\nYou MUST speak exactly like ${assignedName} using the tone described above.\n${referenceSnippets ? `STYLE REFERENCE (Mimic this tone/vocabulary):\n${referenceSnippets}\n` : ''}==============================`;
 
-      let basePrompt = `${dynamicPersonaContext}\n\n${globalPrompt}\n\n${knowledgeBaseBlock}\n${conversationFlowRule}`;
+      let basePrompt = `${dynamicPersonaContext}\n\n${globalPrompt}\n\n${safetyRules}\n\n${knowledgeBaseBlock}\n${conversationFlowRule}`;
 
 
       // Format history for Gemini contents array
@@ -1093,10 +1200,12 @@ ${greetingRule}
         parameters: {
           type: Type.OBJECT,
           properties: {
-            lead_type: { type: Type.STRING, description: "Type of lead (e.g., query, booking, support)" },
-            data: { type: Type.STRING, description: "JSON string containing extracted fields from the conversation" }
+            lead_type: { type: Type.STRING, description: "Type of lead (e.g., 'showroom_demo', 'pricing_inquiry', 'technical_support', 'warranty_claim')" },
+            health_focus: { type: Type.STRING, description: "Customer's focus (e.g., 'sleep', 'circulation', 'fatigue')" },
+            delivery_location: { type: Type.STRING, description: "City/State for setup logistics" },
+            data: { type: Type.STRING, description: "JSON string containing any other extracted fields from the conversation" }
           },
-          required: ["lead_type", "data"],
+          required: ["lead_type", "health_focus", "delivery_location", "data"],
         },
       };
 
@@ -1155,9 +1264,14 @@ ${greetingRule}
               const dataObj = typeof args.data === 'string' ? JSON.parse(args.data) : args.data;
               await supabase.from('leads').insert([{
                 ticket_id: ticketId,
+                business_id: targetBusinessId,
                 customer_phone: customerPhone,
                 lead_type: args.lead_type || 'general',
-                data: dataObj,
+                data: {
+                  ...dataObj,
+                  health_focus: args.health_focus,
+                  delivery_location: args.delivery_location
+                },
                 status: 'New'
               }]);
               toolResult = { success: true, message: "Lead captured successfully." };
@@ -1169,6 +1283,7 @@ ${greetingRule}
             const args = call.args;
             try {
               await supabase.from('company_knowledge').insert([{ 
+                business_id: targetBusinessId,
                 topic: args.question, 
                 fact: args.best_answer, 
                 category: args.category, 
@@ -1256,12 +1371,12 @@ ${greetingRule}
   return `Kejap ya boss, line sistem tengah sangkut jap. I check manual jap ya. [NEEDS_AGENT] (Attempts exhausted. Last Error: ${lastError?.message})`;
 }
 
-async function sendWhatsAppImage(to: string, imageUrl: string) {
-  const url = `https://graph.facebook.com/v17.0/${META_PHONE_ID}/messages`;
+async function sendWhatsAppImage(to: string, imageUrl: string, token: string = META_ACCESS_TOKEN!, phoneId: string = META_PHONE_ID!) {
+  const url = `https://graph.facebook.com/v17.0/${phoneId}/messages`;
   await fetch(url, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${META_ACCESS_TOKEN}`,
+      "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({

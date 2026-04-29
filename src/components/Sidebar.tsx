@@ -7,6 +7,10 @@ import {
   BookOpen,
   BarChart3, 
   FileText,
+  Settings,
+  ShieldCheck,
+  Zap,
+  ChevronRight,
   LogOut,
   UserCircle,
   Loader2,
@@ -27,6 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
   const navigate = useNavigate();
   const { agent, logout, updateAgent } = useAuth();
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(location.pathname.includes('/settings'));
   
   const isAdmin = agent?.role === 'admin'; 
 
@@ -44,18 +49,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
       show: true 
     },
     { 
-      label: 'Agents', 
-      icon: Users, 
-      path: '/admin/agents',
-      show: isAdmin 
-    },
-    { 
-      label: 'Knowledge Base', 
-      icon: BookOpen, 
-      path: '/admin/knowledge-base',
-      show: isAdmin 
-    },
-    { 
       label: 'Leads', 
       icon: FileText, 
       path: '/admin/leads',
@@ -69,10 +62,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
     },
   ];
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
+  const settingsItems = [
+    { label: 'Identity & Persona', icon: ShieldCheck, path: '/admin/settings/identity' },
+    { label: 'Knowledge Base', icon: BookOpen, path: '/admin/settings/knowledge' },
+    { label: 'AI Prompts & Rules', icon: Zap, path: '/admin/settings/prompts' },
+  ];
 
   const toggleStatus = async () => {
     if (!agent) return;
@@ -142,6 +136,53 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
             </Link>
           );
         })}
+
+        {isAdmin && (
+          <div className="pt-2">
+            <button
+              onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+              className={cn(
+                "w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all group",
+                location.pathname.includes('/settings')
+                  ? "text-black"
+                  : "text-slate-500 hover:text-black hover:bg-slate-50"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <Settings className={cn("w-4 h-4", location.pathname.includes('/settings') ? "text-black" : "text-slate-400")} />
+                Settings
+              </div>
+              <ChevronRight className={cn(
+                "w-3 h-3 transition-transform duration-200",
+                isSettingsOpen && "rotate-90"
+              )} />
+            </button>
+            
+            {isSettingsOpen && (
+              <div className="mt-1 ml-4 pl-4 border-l border-slate-100 space-y-1">
+                {settingsItems.map((item) => {
+                  const isActive = location.pathname === item.path;
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setIsOpen?.(false)}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all",
+                        isActive 
+                          ? "bg-slate-50 text-black" 
+                          : "text-slate-400 hover:text-black hover:bg-slate-50"
+                      )}
+                    >
+                      <item.icon className={cn("w-3.5 h-3.5", isActive ? "text-black" : "text-slate-400")} />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </nav>
 
       <div className="p-4 border-t border-slate-100 space-y-4">
@@ -184,14 +225,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
             </button>
           </div>
         )}
-        
-        <button 
-          onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 transition-all"
-        >
-          <LogOut className="w-4 h-4" />
-          Logout
-        </button>
       </div>
       </aside>
     </>
