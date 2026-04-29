@@ -413,7 +413,7 @@ serve(async (req) => {
         const { message, personality_instructions, agent_name } = body;
         
         try {
-          const response = await generateAIResponse(message, "Test Customer", "Test Phone", personality_instructions, agent_name);
+          const response = await generateAIResponse(message, "Test Customer", "Test Phone", "test-ticket-id", personality_instructions, agent_name);
           return new Response(JSON.stringify({ success: true, response }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
@@ -820,11 +820,27 @@ serve(async (req) => {
                 let referenceSnippets = null;
                 
                 // Fetch default identity from settings if no specific agent is assigned or mirroring is off
-                const { data: identitySettings } = await supabase
-                  .from('system_settings')
-                  .select('key, value')
-                  .in('key', ['ai_agent_name', 'ai_tone_style', 'ai_personality_instructions'])
-                  .eq('business_id', targetBusinessId);
+                let identitySettings: any = null;
+                if (targetBusinessId) {
+                  const { data, error } = await supabase
+                    .from('system_settings')
+                    .select('key, value')
+                    .in('key', ['ai_agent_name', 'ai_tone_style', 'ai_personality_instructions', 'ai_emoji_usage'])
+                    .eq('business_id', targetBusinessId);
+                  
+                  if (!error && data) {
+                    identitySettings = data;
+                  }
+                }
+                
+                if (!identitySettings || identitySettings.length === 0) {
+                  const { data } = await supabase
+                    .from('system_settings')
+                    .select('key, value')
+                    .in('key', ['ai_agent_name', 'ai_tone_style', 'ai_personality_instructions', 'ai_emoji_usage'])
+                    .is('business_id', null);
+                  identitySettings = data;
+                }
                 
                 let defaultAgentName = "AI Assistant";
                 let defaultTone = "";
@@ -1026,9 +1042,15 @@ async function generateAIResponse(userInput: string, customerName: string, custo
       const ai = new GoogleGenAI({ apiKey: currentKey });
       
       // 1. Fetch Company Knowledge Base Facts (RAG)
-      let factsQuery = supabase.from('company_knowledge').select('category, topic, fact, image_url').eq('is_active', true);
-      if (targetBusinessId) factsQuery = factsQuery.eq('business_id', targetBusinessId);
-      const { data: facts } = await factsQuery;
+      let facts: any = null;
+      if (targetBusinessId) {
+        const { data } = await supabase.from('company_knowledge').select('category, topic, fact, image_url').eq('is_active', true).eq('business_id', targetBusinessId);
+        facts = data;
+      }
+      if (!facts || facts.length === 0) {
+        const { data } = await supabase.from('company_knowledge').select('category, topic, fact, image_url').eq('is_active', true).is('business_id', null);
+        facts = data;
+      }
 
       const formattedFacts = facts && facts.length > 0 
         ? facts.map(f => `[${f.category} - ${f.topic}]: ${f.fact}${f.image_url ? ` (IMAGE_URL: ${f.image_url})` : ''}`).join('\n')
@@ -1091,9 +1113,15 @@ ${greetingRule}
 
       
       // 2. Fetch Global System Prompt from Database
-      let settingsQuery = supabase.from('system_settings').select('value').eq('key', 'ai_system_prompt');
-      if (targetBusinessId) settingsQuery = settingsQuery.eq('business_id', targetBusinessId);
-      const { data: settings } = await settingsQuery.single();
+      let settings: any = null;
+      if (targetBusinessId) {
+        const { data } = await supabase.from('system_settings').select('value').eq('key', 'ai_system_prompt').eq('business_id', targetBusinessId).maybeSingle();
+        settings = data;
+      }
+      if (!settings) {
+        const { data } = await supabase.from('system_settings').select('value').eq('key', 'ai_system_prompt').is('business_id', null).maybeSingle();
+        settings = data;
+      }
 
       const globalPrompt = settings?.value || "You are an AI Support Assistant. Your goal is to provide fast, accurate, and helpful support. If you don't know the answer, tell the customer kindly and use [NEEDS_AGENT].";
 
