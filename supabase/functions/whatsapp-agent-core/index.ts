@@ -1138,7 +1138,13 @@ ${greetingRule}
 
       const dynamicPersonaContext = `=== YOUR ASSIGNED IDENTITY ===\nYour Name: ${assignedName}\nYour Specific Personality & Tone: ${assignedPersona}\n\nYou MUST speak exactly like ${assignedName} using the tone described above.\n${referenceSnippets ? `STYLE REFERENCE (Mimic this tone/vocabulary):\n${referenceSnippets}\n` : ''}==============================`;
 
-      let basePrompt = `${dynamicPersonaContext}\n\n${globalPrompt}\n\n${safetyRules}\n\n${knowledgeBaseBlock}\n${conversationFlowRule}`;
+      const languageRule = `CRITICAL LANGUAGE CONTINUITY RULE:
+* You MUST reply in the EXACT SAME LANGUAGE the customer used in their latest message. 
+* DO NOT mix languages unless the customer does. 
+* If the conversation is in Chinese, you MUST reply entirely in Chinese. Do NOT use default Malay or English phrases (like 'Ah, itu pertanyaan yang bagus', 'Kejap', 'boss', 'ya') if the customer is speaking Chinese or English.
+* Do not fall back to Malay just because your persona uses Malay examples. The customer's language takes absolute priority.`;
+
+      let basePrompt = `${dynamicPersonaContext}\n\n${globalPrompt}\n\n${safetyRules}\n\n${knowledgeBaseBlock}\n${conversationFlowRule}\n\n${languageRule}`;
 
 
       // Format history for Gemini contents array
