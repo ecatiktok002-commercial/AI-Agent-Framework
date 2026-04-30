@@ -169,9 +169,18 @@ Output STRICTLY as a JSON array with exactly these keys: "product_name", "catego
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    const fs = await import('fs');
+    app.use(express.static(distPath, { index: false }));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      try {
+        let html = fs.readFileSync(path.join(distPath, 'index.html'), 'utf-8');
+        const envScript = `<script>window.__ENV__ = { VITE_SUPABASE_URL: "${process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || ''}", VITE_SUPABASE_ANON_KEY: "${process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || ''}" }</script>`;
+        html = html.replace('</head>', `${envScript}</head>`);
+        res.send(html);
+      } catch (err) {
+        console.error("Error serving index.html:", err);
+        res.status(500).send("Server Error");
+      }
     });
   }
 

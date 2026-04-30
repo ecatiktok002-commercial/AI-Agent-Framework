@@ -1,8 +1,11 @@
 /// <reference types="vite/client" />
 import { createClient } from '@supabase/supabase-js';
 
-let supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
-let supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+// @ts-ignore
+const injectedEnv = typeof window !== 'undefined' ? window.__ENV__ : null;
+
+let supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.SUPABASE_URL || injectedEnv?.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
+let supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.SUPABASE_ANON_KEY || injectedEnv?.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key';
 
 // Validate URL
 try {
