@@ -436,7 +436,7 @@ export default function KnowledgeBasePage() {
             className="flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-all shadow-md"
           >
             <Plus className="w-4 h-4" />
-            Add Fact
+            Add Knowledge Entry
           </button>
         </div>
       </div>
@@ -508,7 +508,13 @@ export default function KnowledgeBasePage() {
                <Box className="w-4 h-4 text-violet-500" />
                Products
             </div>
-            <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full text-[9px]">{products.length}</span>
+            <button 
+              onClick={() => handleOpenModal()} 
+              className="p-1 hover:bg-slate-200 rounded-md text-slate-400 hover:text-black transition-colors"
+              title="Add New Product"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-white">
             {products.length === 0 ? (

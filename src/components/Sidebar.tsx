@@ -52,6 +52,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
       show: true 
     },
     { 
+      label: 'Products', 
+      icon: BookOpen, 
+      path: '/admin/settings/knowledge',
+      show: isAdmin 
+    },
+    { 
       label: 'Leads', 
       icon: FileText, 
       path: '/admin/leads',
