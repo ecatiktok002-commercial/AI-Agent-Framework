@@ -1,15 +1,22 @@
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
-import { Menu, MessageSquare } from 'lucide-react';
+import { Menu, MessageSquare, AlertTriangle } from 'lucide-react';
 import { useDashboardSettings } from '../hooks/useDashboardSettings';
+import { isSupabaseConfigured } from '../supabase';
 
 const Layout: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { logoUrl } = useDashboardSettings();
 
   return (
-    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
+    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden relative">
+      {!isSupabaseConfigured && (
+        <div className="absolute top-0 left-0 right-0 z-50 bg-red-500 text-white p-3 text-center text-sm font-medium flex items-center justify-center gap-2">
+          <AlertTriangle className="w-4 h-4" />
+          <span>Environment variables missing! Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your AI Studio application settings.</span>
+        </div>
+      )}
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile Header */}

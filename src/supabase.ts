@@ -4,8 +4,10 @@ import { createClient } from '@supabase/supabase-js';
 // @ts-ignore
 const injectedEnv = typeof window !== 'undefined' ? window.__ENV__ : null;
 
-let supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.SUPABASE_URL || injectedEnv?.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
-let supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.SUPABASE_ANON_KEY || injectedEnv?.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+let supabaseUrl = injectedEnv?.VITE_SUPABASE_URL || injectedEnv?.SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL || import.meta.env.SUPABASE_URL || 'https://placeholder.supabase.co';
+let supabaseAnonKey = injectedEnv?.VITE_SUPABASE_ANON_KEY || injectedEnv?.SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.SUPABASE_ANON_KEY || 'placeholder-anon-key';
+
+export const isSupabaseConfigured = supabaseUrl !== 'https://placeholder.supabase.co' && supabaseAnonKey !== 'placeholder-anon-key';
 
 // Validate URL
 try {
