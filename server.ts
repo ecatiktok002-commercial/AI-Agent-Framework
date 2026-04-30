@@ -165,6 +165,26 @@ Output STRICTLY as a JSON array with exactly these keys: "product_name", "catego
       server: { middlewareMode: true },
       appType: "spa",
     });
+    
+    const fs = await import('fs');
+    
+    // Inject __ENV__ into the HTML served by Vite
+    app.use('*', async (req, res, next) => {
+      try {
+        if (req.originalUrl.includes('.') && !req.originalUrl.endsWith('.html')) {
+           return next();
+        }
+        let template = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
+        template = await vite.transformIndexHtml(req.originalUrl, template);
+        const envScript = `<script>window.__ENV__ = { VITE_SUPABASE_URL: "${process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || ''}", VITE_SUPABASE_ANON_KEY: "${process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || ''}" };</script>`;
+        const html = template.replace('</head>', `${envScript}</head>`);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+      } catch (e: any) {
+        vite.ssrFixStacktrace(e);
+        next(e);
+      }
+    });
+
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
